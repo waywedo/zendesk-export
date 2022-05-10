@@ -30,8 +30,8 @@ function resetPrompt(init) {
 	prompt.delimiter = '';
 	var command = {
 		'name': 'command',
-		'message': colors.white('Command:'),
-		'hidden' : true
+		'description': colors.white('Command:'),
+		'hidden' : false
 	}
 	prompt.get([command], function (error, result) {
 		if (error) throw error;
@@ -268,7 +268,8 @@ function saveTicket(ticket) {
 function getComments(ticketId) {
 	client.tickets.getComments(ticketId, function (error, req, res) {
 		if (error) {console.log('Error getting comments for ticket '+ticketId+': '+error); return;}
-		var comments = res[0].comments;
+		var comments = res;
+
 		for (var i = 0; i < comments.length; i++) {
 			saveComment(comments[i], ticketId);
 		}
