@@ -110,9 +110,13 @@ function mkdir(file, callback) {
 		console.log(error);
 		return;
 	}
-	mkdirp(path, function (error) {
-		if (error) {console.log(error); return;}
-		if (callback) {callback(path)} // Run the callback if it was passed
+
+	mkdirp(path).then(() => {
+		if (callback) {
+			callback(path); // Run the callback if it was passed
+		}
+	}).catch((error) => {
+		console.log(error);
 	});
 }
 
