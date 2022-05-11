@@ -237,8 +237,9 @@ function getTicket(ticketId) {
  * Gets all tickets from Zendesk and passes each ticket to the saveTicket function
  */
 function getTickets() {
-	client.tickets.list(function (error, req, res) {
+	client.tickets.incremental(1420070400, function (error, req, res) {
 		if (error) {console.log('Error getting all tickets: '+error); return;}
+		console.log(`Retrieved ${res.length} tickets.`);
 		for (var i = 0; i < res.length; i++) {
 			saveTicket(res[i]);
 		}
