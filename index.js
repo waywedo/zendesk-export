@@ -11,7 +11,8 @@ var fs = require('fs'),
 var client = zendesk.createClient({
 	username:  config.username.substring(0, config.username.lastIndexOf('/')),
 	token:     config.token,
-	remoteUri: 'https://'+config.domain+'/api/v2'
+	remoteUri: 'https://'+config.domain+'/api/v2',
+	throttle: 500
 });
 
 resetPrompt(true); // Run the command prompt init
@@ -92,7 +93,7 @@ function check(file, callback) {
 		} else if(error.code == 'ENOENT') {
 			callback(false);
 		} else {
-			console.log('Error checking file: ', error.code);
+			console.error('Error checking file: ', error.code);
 		}
 	});
 }
@@ -107,7 +108,7 @@ function mkdir(file, callback) {
 	try {
 		path = file.substring(0, file.lastIndexOf('/')); // Remove the filename from the end of the file path
 	} catch(error) {
-		console.log(error);
+		console.error(error);
 		return;
 	}
 
@@ -116,7 +117,7 @@ function mkdir(file, callback) {
 			callback(path); // Run the callback if it was passed
 		}
 	}).catch((error) => {
-		console.log(error);
+		console.error(error);
 	});
 }
 
@@ -127,11 +128,11 @@ function mkdir(file, callback) {
  */
 function read(file, callback) {
 	fs.readFile(file, function (error, data) {
-		if (error) {console.log('Error reading file '+file+': '+error); return;}
+		if (error) {console.error('Error reading file '+file+': '+error); return;}
 		try {
 			var file = JSON.parse(data);
 		} catch(error) {
-			console.log(error);
+			console.error('Error parsing file '+file+': '+error);
 			return;
 		}
 		callback(file);
@@ -156,7 +157,7 @@ function download(uri, file, callback) {
 		}
 		request
 			.get(options) // Pass options
-			.on('error', function(error) {console.log('Error downloading file '+file+' <'+uri+'>: '+error); return;}) //
+			.on('error', function(error) {console.error('Error downloading file '+file+' <'+uri+'>: '+error); return;}) //
 			.pipe(fs.createWriteStream(file)) // Write the pipe to a file stream
 			.on('finish', function() {
 				if (callback) {callback(file)} // Run the callback if it was passed
@@ -175,11 +176,11 @@ function save(object, file, callback) {
 	try {
 		var data = JSON.stringify(object, null, 4); // Convert object to pretty-print JSON
 	} catch(error) {
-		console.log(error);
+		console.error('Error stringifying file '+file+': '+error);
 		return;
 	}
 	fs.writeFile(file, data, function(error) {
-		if (error) {console.log('Error saving file '+file+': '+error); return;}
+		if (error) {console.error('Error saving file '+file+': '+error); return;}
 		if (callback) { callback(file) } // Run the callback if it was passed
 	});
 }
@@ -190,7 +191,7 @@ function save(object, file, callback) {
  */
 function getUser(userId) {
 	client.users.show(userId, function (error, req, res) {
-		if (error) {console.log('Error getting user '+userID+': '+error); return;}
+		if (error) {console.error('Error getting user '+userID+': '+error); return;}
 		saveUser(res);
 	});
 }
@@ -200,7 +201,7 @@ function getUser(userId) {
  */
 function getUsers() {
 	client.users.list(function (error, req, res) {
-		if (error) {console.log('Error getting all users: '+error); return;}
+		if (error) {console.error('Error getting all users: '+error); return;}
 		for (var i = 0; i < res.length; i++) {
 			saveUser(res[i]);
 		}
@@ -227,8 +228,9 @@ function saveUser(user) {
  * @param {integer} ticketId The ID of the ticket to save
  */
 function getTicket(ticketId) {
+	client.tickets.sideLoad = ['comment_count'];
 	client.tickets.show(ticketId, function (error, req, res) {
-		if (error) {console.log('Error getting ticket '+ticketId+': '+error); return;}
+		if (error) {console.error('Error getting ticket '+ticketId+': '+error); return;}
 		saveTicket(res);
 	});
 }
@@ -237,12 +239,24 @@ function getTicket(ticketId) {
  * Gets all tickets from Zendesk and passes each ticket to the saveTicket function
  */
 function getTickets() {
+	client.tickets.sideLoad = ['comment_count'];
 	client.tickets.incremental(1420070400, function (error, req, res) {
-		if (error) {console.log('Error getting all tickets: '+error); return;}
-		console.log(`Retrieved ${res.length} tickets.`);
-		for (var i = 0; i < res.length; i++) {
-			saveTicket(res[i]);
+		if (error) {console.error('Error getting all tickets: '+error); return;}
+		console.info(`Retrieved ${res.length} tickets.`);
+		let i = 0
+
+		const saveTicketWithDelay = () => {
+			setTimeout(() => {
+				console.info(`Saving ticket ${i+1} of ${res.length}`);
+				saveTicket(res[i]);
+				i++;
+				if (i < res.length) {
+				  saveTicketWithDelay();
+				}
+			}, 500);
 		}
+
+		saveTicketWithDelay();
 	});
 }
 
@@ -258,7 +272,9 @@ function saveTicket(ticket) {
 				save(ticket, file); // Save the data to the file
 			});
 		}
-		getComments(ticket.id); // Get the comments for this ticket
+		if (!ticket.hasOwnProperty("comment_count") || ticket.comment_count > 0) {
+			getComments(ticket.id); // Get the comments for this ticket
+		}
 	});
 }
 
@@ -268,7 +284,7 @@ function saveTicket(ticket) {
  */
 function getComments(ticketId) {
 	client.tickets.getComments(ticketId, function (error, req, res) {
-		if (error) {console.log('Error getting comments for ticket '+ticketId+': '+error); return;}
+		if (error) {console.error('Error getting comments for ticket '+ticketId+': '+error); return;}
 		var comments = res;
 
 		for (var i = 0; i < comments.length; i++) {
